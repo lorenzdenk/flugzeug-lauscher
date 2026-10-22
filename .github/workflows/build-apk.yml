@@ -1,0 +1,49 @@
+name: APK bauen
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Web-Dateien nach www kopieren
+        run: |
+          rm -rf www && mkdir www
+          cp index.html style.css app.js data.js manifest.json www/
+          cp -r vendor www/vendor
+          # In der App spricht config.js direkt mit der API (CapacitorHttp umgeht CORS)
+          echo "window.API_BASES = ['https://api.adsb.lol'];" > www/config.js
+
+      - run: npm ci
+
+      - run: npx cap sync android
+
+      - name: Android-Lizenzen akzeptieren
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Debug-APK bauen
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Flugzeug-Lauscher-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
