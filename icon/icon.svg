@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#7fdcff"/><stop offset=".45" stop-color="#25a6ee"/><stop offset="1" stop-color="#0a69bd"/>
+  </linearGradient>
+  <radialGradient id="glow" cx=".25" cy=".12" r=".7">
+    <stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".5" stop-color="#fff" stop-opacity=".12"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="hill1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a6ec63"/><stop offset="1" stop-color="#3a9e27"/></linearGradient>
+  <linearGradient id="hill2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fd146"/><stop offset="1" stop-color="#27801f"/></linearGradient>
+  <linearGradient id="plane" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".6" stop-color="#e9f6ff"/><stop offset="1" stop-color="#a9d8f5"/></linearGradient>
+  <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".75"/><stop offset="1" stop-color="#fff" stop-opacity=".05"/></linearGradient>
+  <filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#04365f" flood-opacity=".55"/></filter>
+  <filter id="wsh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#04365f" flood-opacity=".4"/></filter>
+</defs><clipPath id="c"><rect width="1024" height="1024" rx="230"/></clipPath><g clip-path="url(#c)">
+<rect width="1024" height="1024" fill="url(#sky)"/>
+<rect width="1024" height="1024" fill="url(#glow)"/>
+<ellipse cx="250" cy="300" rx="190" ry="48" fill="#fff" opacity=".28"/>
+<ellipse cx="800" cy="610" rx="150" ry="38" fill="#fff" opacity=".22"/>
+<circle cx="860" cy="190" r="46" fill="#fff" opacity=".22"/><circle cx="160" cy="560" r="26" fill="#fff" opacity=".25"/>
+<path d="M0 800 Q260 690 520 790 T1024 760 V1024 H0Z" fill="url(#hill1)"/>
+<path d="M0 880 Q300 800 580 870 T1024 850 V1024 H0Z" fill="url(#hill2)"/>
+<g transform="translate(300 790)" fill="none" stroke="#fff" stroke-linecap="round"><path d="M38.8 -144.9 A150 150 0 0 1 144.9 -38.8" stroke-width="46" opacity="1.00"/>
+<path d="M64.7 -241.5 A250 250 0 0 1 241.5 -64.7" stroke-width="42" opacity="0.78"/>
+<path d="M90.6 -338.1 A350 350 0 0 1 338.1 -90.6" stroke-width="38" opacity="0.56"/></g>
+<circle cx="300" cy="790" r="34" fill="#fff"/>
+<g transform="translate(626 418) rotate(45) scale(21)"><path d="M0 -10 L2.2 -3 L10 3 L10 5 L2.2 2.5 L1.8 8 L5 10 L5 11.5 L0 10.3 L-5 11.5 L-5 10 L-1.8 8 L-2.2 2.5 L-10 5 L-10 3 L-2.2 -3Z" fill="#04365f" opacity=".28"/></g>
+<g transform="translate(620 400) rotate(45) scale(21)">
+  <path d="M0 -10 L2.2 -3 L10 3 L10 5 L2.2 2.5 L1.8 8 L5 10 L5 11.5 L0 10.3 L-5 11.5 L-5 10 L-1.8 8 L-2.2 2.5 L-10 5 L-10 3 L-2.2 -3Z" fill="url(#plane)" stroke="#fff" stroke-width=".35" stroke-linejoin="round"/>
+</g><path d="M60 70 Q512 -40 964 70 Q930 400 512 430 Q94 400 60 70Z" fill="url(#gloss)" opacity=".9"/></g>
+  <rect x="3" y="3" width="1018" height="1018" rx="227" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="6"/></svg>

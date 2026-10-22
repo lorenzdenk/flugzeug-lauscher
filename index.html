@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2aa9e8">
+<title>Flugzeug-Lauscher</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="sky" aria-hidden="true">
+  <div class="sun"></div>
+  <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
+  <div class="bubble b1"></div><div class="bubble b2"></div><div class="bubble b3"></div><div class="bubble b4"></div>
+  <svg class="hill" viewBox="0 0 400 120" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9be15b"/><stop offset="1" stop-color="#3f9d2c"/></linearGradient>
+      <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fcf45"/><stop offset="1" stop-color="#2a7d22"/></linearGradient>
+    </defs>
+    <path d="M0 60 Q90 10 200 55 T400 40 V120 H0Z" fill="url(#g1)"/>
+    <path d="M0 85 Q120 45 240 80 T400 70 V120 H0Z" fill="url(#g2)"/>
+  </svg>
+</div>
+
+<main>
+  <header class="glass head">
+    <div class="title">
+      <h1>Flugzeug<span>Lauscher</span></h1>
+      <div id="status" class="status">Suche Standort …</div>
+    </div>
+    <div id="concept" class="concept unknown">
+      <div class="orb"><i></i></div>
+      <div class="ctext">
+        <small>Landekonzept ZRH</small>
+        <strong id="conceptName">…</strong>
+        <em id="conceptSub">Werte Anflüge aus</em>
+      </div>
+    </div>
+  </header>
+
+  <section class="glass radarbox">
+    <div class="dome">
+      <canvas id="radar"></canvas>
+      <div id="map" hidden></div>
+      <div class="gloss"></div>
+    </div>
+    <div class="controls">
+      <button class="gel" id="zoomOut" aria-label="Weiter weg">−</button>
+      <span id="rangeLabel" class="rlabel">20 km</span>
+      <button class="gel" id="zoomIn" aria-label="Näher ran">+</button>
+    </div>
+    <div class="controls">
+      <button class="gel toggle on" id="viewRadar">Kompass</button>
+      <button class="gel toggle" id="viewMap">Karte</button>
+      <button class="gel toggle" id="btnAll">Alle</button>
+    </div>
+  </section>
+
+  <section class="glass listbox">
+    <h2>Über dir <small id="count"></small></h2>
+    <div id="list"></div>
+    <p id="empty" class="empty" hidden>Gerade kein Zürich-Flug in Reichweite.</p>
+  </section>
+
+  <footer>Daten: adsb.lol · Entfernung = Luftlinie inkl. Höhe · Gelände: Open-Meteo</footer>
+</main>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="config.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

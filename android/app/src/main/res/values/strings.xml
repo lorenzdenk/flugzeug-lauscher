@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Flugzeug-Lauscher</string>
+    <string name="title_activity_main">Flugzeug-Lauscher</string>
+    <string name="package_name">ch.lauscher.flugzeug</string>
+    <string name="custom_url_scheme">ch.lauscher.flugzeug</string>
+</resources>

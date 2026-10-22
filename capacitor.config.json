@@ -1,0 +1,9 @@
+{
+  "appId": "ch.lauscher.flugzeug",
+  "appName": "Flugzeug-Lauscher",
+  "webDir": "www",
+  "backgroundColor": "#4fb8f0",
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}
