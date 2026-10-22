@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -39,11 +42,35 @@ jobs:
       - name: Debug-APK bauen
         working-directory: android
         run: |
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon 2>&1 | tee ../build.log
+
+      # Bei Fehlschlag: Build-Log in den Branch "build-logs" (ohne Anmeldung lesbar ist nur bei öffentlichen Repos)
+      - name: Build-Log veröffentlichen
+        if: failure()
+        run: |
+          mkdir -p /tmp/bl && cp build.log /tmp/bl/ && cd /tmp/bl
+          git init -q -b build-logs
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A && git commit -qm "build log of run ${{ github.run_id }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" build-logs
+
+      - name: APK umbenennen
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/flugzeug-lauscher-${{ github.run_number }}.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: Flugzeug-Lauscher-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: out/*.apk
           if-no-files-found: error
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Flugzeug-Lauscher – Build ${{ github.run_number }}
+          body: Debug-APK. Die angehängte APK-Datei installieren.
+          files: out/*.apk
