@@ -73,21 +73,33 @@ h1 span{font-weight:700;color:var(--aqua3)}
   background:radial-gradient(circle at 50% 50%,#1f9fe0 0%,#0f78bf 55%,#07548f 100%);
   box-shadow:0 0 0 5px rgba(255,255,255,.75),0 0 0 7px rgba(60,160,220,.5),0 10px 22px rgba(0,60,110,.4),inset 0 0 40px rgba(0,40,90,.55)}
 #radar{position:absolute;inset:0;width:100%;height:100%;touch-action:manipulation}
-#map{position:absolute;inset:0;z-index:1;background:#cfe9f7;font-family:inherit}
-#map .leaflet-control-attribution{background:rgba(255,255,255,.7);font-size:9px;border-radius:8px 8px 0 0;padding:0 6px;margin-bottom:6%}
+#map{position:absolute;inset:0;z-index:1;background:#0d1117;font-family:inherit}
+#map .leaflet-control-attribution{background:rgba(13,17,23,.75);color:#8b98a5;font-size:9px;border-radius:8px 8px 0 0;padding:0 6px;margin-bottom:6%}
+#map .leaflet-control-attribution a{color:#a9b8c6}
+
+/* Tabs oben: Kompass | Karte */
+.tabs{display:flex;gap:4px;padding:4px;border-radius:26px;
+  background:linear-gradient(180deg,rgba(0,70,120,.28),rgba(0,70,120,.12));
+  box-shadow:inset 0 2px 5px rgba(0,60,110,.35),0 1px 0 rgba(255,255,255,.7)}
+.tab{flex:1;appearance:none;border:1px solid transparent;cursor:pointer;height:38px;border-radius:22px;
+  font:700 15px/1 inherit;font-family:inherit;color:var(--ink2);background:transparent;
+  text-shadow:0 1px 0 rgba(255,255,255,.7);transition:background .15s,color .15s,box-shadow .15s}
+.tab.on{color:#fff;border-color:#0a6aa8;text-shadow:0 -1px 1px rgba(0,60,110,.7);
+  background:linear-gradient(180deg,#6fd6ff 0%,#22a5ec 48%,#0a82cc 52%,#35b9f2 100%);
+  box-shadow:0 2px 6px rgba(0,60,110,.4),inset 0 1px 1px rgba(255,255,255,.9),inset 0 -6px 8px rgba(120,230,255,.45)}
 .leaflet-container{font-family:inherit}
 .me{width:22px;height:22px;border-radius:50%;border:2px solid #fff;
   background:radial-gradient(circle at 35% 30%,#fff,#7dff6a 45%,#1a9a1a);box-shadow:0 0 0 6px rgba(80,220,80,.25),0 2px 6px rgba(0,60,0,.5)}
 .zrh{font:700 11px/16px inherit;font-family:inherit;color:#fff;text-align:center;border-radius:8px;background:rgba(10,100,170,.8);box-shadow:0 1px 3px rgba(0,40,90,.5)}
 .pm{position:relative;width:30px;height:30px}
 .pm .pi{position:absolute;inset:0;display:block}
-.pm svg{width:30px;height:30px;overflow:visible;filter:drop-shadow(0 2px 2px rgba(0,40,90,.55))}
+.pm svg{width:30px;height:30px;overflow:visible;filter:drop-shadow(0 2px 3px rgba(0,0,0,.8))}
 .pm svg path{fill:#fff;stroke:#fff;stroke-width:.6;stroke-linejoin:round}
 .pm.arr svg path{fill:#ffb347;stroke:#fff}.pm.dep svg path{fill:#7ddc4f;stroke:#fff}.pm.oth svg path{fill:#c3d4de;stroke:#fff}
 .pm.sel::before{content:"";position:absolute;left:-6px;top:-6px;width:42px;height:42px;border-radius:50%;border:3px solid #ff9a1f;animation:pulse 1s ease-in-out infinite alternate}
 @keyframes pulse{from{opacity:1;transform:scale(.92)}to{opacity:.4;transform:scale(1.08)}}
-.pm .pl{position:absolute;left:32px;top:-1px;white-space:nowrap;line-height:1.1;text-shadow:0 1px 0 #fff,0 0 4px #fff,0 0 4px #fff}
-.pm .pl b{display:block;font-size:11px;color:#0b3a5e}.pm .pl i{display:block;font-size:10px;font-style:normal;color:#2c6f99}
+.pm .pl{position:absolute;left:32px;top:-1px;white-space:nowrap;line-height:1.1;text-shadow:0 1px 2px #000,0 0 4px #000,0 0 4px #000}
+.pm .pl b{display:block;font-size:11px;color:#fff}.pm .pl i{display:block;font-size:10px;font-style:normal;color:#9fd4f2}
 .gloss{position:absolute;left:6%;right:6%;top:1.5%;height:44%;border-radius:50% 50% 50% 50%/80% 80% 20% 20%;pointer-events:none;z-index:2;
   background:linear-gradient(180deg,rgba(255,255,255,.5),rgba(255,255,255,.04))}
 

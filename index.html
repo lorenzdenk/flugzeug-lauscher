@@ -43,6 +43,10 @@
   </header>
 
   <section class="glass radarbox">
+    <div class="tabs" role="tablist">
+      <button class="tab on" id="viewRadar" role="tab" aria-selected="true">Kompass</button>
+      <button class="tab" id="viewMap" role="tab" aria-selected="false">Karte</button>
+    </div>
     <div class="dome">
       <canvas id="radar"></canvas>
       <div id="map" hidden></div>
@@ -54,8 +58,6 @@
       <button class="gel" id="zoomIn" aria-label="Näher ran">+</button>
     </div>
     <div class="controls">
-      <button class="gel toggle on" id="viewRadar">Kompass</button>
-      <button class="gel toggle" id="viewMap">Karte</button>
       <button class="gel toggle" id="btnAll">Alle</button>
     </div>
   </section>

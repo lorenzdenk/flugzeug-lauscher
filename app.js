@@ -427,6 +427,8 @@ function setView(v) {
   $('radar').hidden = isMap; $('map').hidden = !isMap;
   $('viewMap').classList.toggle('on', isMap);
   $('viewRadar').classList.toggle('on', !isMap);
+  $('viewMap').setAttribute('aria-selected', isMap);
+  $('viewRadar').setAttribute('aria-selected', !isMap);
   if (isMap) { initMap(); map.invalidateSize(); fitMap(); updateMap(); } else { sizeCanvas(); }
 }
 function updateCompassLabel() { $('viewRadar').textContent = state.compass ? 'Kompass' : 'Norden oben'; }
@@ -471,8 +473,8 @@ function initMap() {
   if (map) return;
   map = L.map('map', { zoomControl: false, zoomSnap: 0.25, attributionControl: true, tap: false });
   map.attributionControl.setPrefix(false);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '© OpenStreetMap-Mitwirkende',
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd', maxZoom: 19, attribution: '© OpenStreetMap-Mitwirkende © CARTO',
   }).addTo(map);
   userMarker = L.marker([state.user.lat, state.user.lon], { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), interactive: false, zIndexOffset: 1000 }).addTo(map);
   zrhMarker = L.marker([ZRH.lat, ZRH.lon], { icon: L.divIcon({ className: '', html: '<div class="zrh">ZRH</div>', iconSize: [40, 16], iconAnchor: [20, 8] }), interactive: false }).addTo(map);
