@@ -25,7 +25,7 @@ const state = {
   aircraft: new Map(),     // hex -> Datensatz
   routes: new Map(),       // callsign -> {codes:[], ap:{icao:{iata,city}}} | null
   routePending: new Set(),
-  rangeIdx: 2, compass: false, heading: 0, showAll: false,
+  rangeIdx: 2, showAll: false,
   sel: 'auto',             // 'auto' | 'none' | hex
   lastFetch: 0, err: null,
 };
@@ -309,7 +309,7 @@ let radarItems = [];
 function drawRadar() {
   if (S < 20 || state.view === 'map') return;
   const c = ctx, W = S, cx = W / 2, R = W / 2 - 6, range = RANGES[state.rangeIdx], k = R / range;
-  const rot = state.compass ? rad(state.heading) : 0;
+  const rot = 0;                                      // Norden ist immer oben
   const P = (x, y) => [cx + (x * Math.cos(rot) - y * Math.sin(rot)) * k, cx - (x * Math.sin(rot) + y * Math.cos(rot)) * k];
   c.setTransform(DPR, 0, 0, DPR, 0, 0);
   c.clearRect(0, 0, W, W);
@@ -365,10 +365,6 @@ function drawRadar() {
   g.addColorStop(0, '#fff'); g.addColorStop(.5, '#7dff6a'); g.addColorStop(1, '#1a9a1a');
   c.beginPath(); c.arc(cx, cx, 7, 0, 7); c.fillStyle = g; c.shadowColor = '#7dff6a'; c.shadowBlur = 12; c.fill();
   c.shadowBlur = 0; c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke();
-  if (state.compass) { // Blickrichtung
-    c.beginPath(); c.moveTo(cx, cx - 12); c.lineTo(cx - 5, cx - 22); c.lineTo(cx + 5, cx - 22); c.closePath();
-    c.fillStyle = 'rgba(255,255,255,.9)'; c.fill();
-  }
 }
 function drawPlane(c, x, y, a, d, selected, zrh) {
   const s = selected ? 1.35 : 1;
@@ -431,50 +427,18 @@ function setView(v) {
   $('viewRadar').setAttribute('aria-selected', !isMap);
   if (isMap) { initMap(); map.invalidateSize(); fitMap(); updateMap(); } else { sizeCanvas(); }
 }
-function updateCompassLabel() { $('viewRadar').textContent = state.compass ? 'Kompass' : 'Norden oben'; }
-
-/* ---- Kompass (Blickrichtung) ---- */
-let compassListening = false, compassOff = false;
-function onOrient(ev) {
-  let h = null;
-  if (ev.webkitCompassHeading != null) h = ev.webkitCompassHeading;
-  else if (ev.alpha != null && (ev.absolute || ev.type === 'deviceorientationabsolute')) h = 360 - ev.alpha;
-  if (h == null) return;
-  state.heading = h;
-  if (!state.compass && !compassOff && !state.compassSeen) { state.compass = true; updateCompassLabel(); }
-  state.compassSeen = true;
-}
-async function startCompass() {                       // iOS verlangt eine Berechtigung per Tippen
-  if (compassListening) return true;
-  try {
-    if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) {
-      if (await DeviceOrientationEvent.requestPermission() !== 'granted') return false;
-    }
-  } catch (err) { return false; }
-  window.addEventListener('deviceorientationabsolute', onOrient, true);
-  window.addEventListener('deviceorientation', onOrient, true);
-  compassListening = true;
-  return true;
-}
-$('viewRadar').onclick = async () => {
-  if (state.view === 'map') { setView('radar'); return; }
-  // im Radar: zwischen «Kompass» (Blickrichtung oben) und «Norden oben» umschalten
-  if (!(await startCompass())) return;
-  if (!state.compassSeen) { state.compass = false; compassOff = false; updateCompassLabel(); return; }  // kein Sensor
-  state.compass = !state.compass; compassOff = !state.compass; updateCompassLabel(); drawRadar();
-};
+$('viewRadar').onclick = () => { if (state.view !== 'radar') setView('radar'); };
 $('viewMap').onclick = () => { if (state.view !== 'map') setView('map'); };
-startCompass();                                       // Android: sofort, iOS: erst nach Tippen auf «Kompass»
 
-/* ---- Kartenansicht (Leaflet + CARTO/OpenStreetMap-Kacheln) ---- */
+/* ---- Kartenansicht (Leaflet + OpenStreetMap-Kacheln, per CSS abgedunkelt) ---- */
 let map = null, userMarker = null, zrhMarker = null;
 const mapMarkers = new Map();
 function initMap() {
   if (map) return;
   map = L.map('map', { zoomControl: false, zoomSnap: 0.25, attributionControl: true, tap: false });
   map.attributionControl.setPrefix(false);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    subdomains: 'abcd', maxZoom: 19, attribution: '© OpenStreetMap-Mitwirkende © CARTO',
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OpenStreetMap-Mitwirkende', className: 'dark-tiles',
   }).addTo(map);
   userMarker = L.marker([state.user.lat, state.user.lon], { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), interactive: false, zIndexOffset: 1000 }).addTo(map);
   zrhMarker = L.marker([ZRH.lat, ZRH.lon], { icon: L.divIcon({ className: '', html: '<div class="zrh">ZRH</div>', iconSize: [40, 16], iconAnchor: [20, 8] }), interactive: false }).addTo(map);
@@ -601,7 +565,6 @@ window.addEventListener('resize', sizeCanvas);
 new ResizeObserver(sizeCanvas).observe($('radar').parentElement);
 setRange(state.rangeIdx);
 sizeCanvas();
-updateCompassLabel();
 setView(state.view);
 startGeo();
 loop();

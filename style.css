@@ -76,6 +76,8 @@ h1 span{font-weight:700;color:var(--aqua3)}
 #map{position:absolute;inset:0;z-index:1;background:#0d1117;font-family:inherit}
 #map .leaflet-control-attribution{background:rgba(13,17,23,.75);color:#8b98a5;font-size:9px;border-radius:8px 8px 0 0;padding:0 6px;margin-bottom:6%}
 #map .leaflet-control-attribution a{color:#a9b8c6}
+/* Dunkle Karte ohne API-Key: normale OSM-Kacheln invertieren und abdunkeln */
+#map .dark-tiles{filter:invert(1) hue-rotate(195deg) brightness(.82) contrast(.92) saturate(.55)}
 
 /* Tabs oben: Kompass | Karte */
 .tabs{display:flex;gap:4px;padding:4px;border-radius:26px;
