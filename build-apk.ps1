@@ -11,7 +11,7 @@ Set-Location $root
 # Web-Dateien nach www kopieren; in der App spricht config.js direkt mit der API (CapacitorHttp umgeht CORS)
 Remove-Item www -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory www | Out-Null
-foreach ($f in 'index.html','style.css','app.js','data.js','manifest.json') { Copy-Item $f www }
+foreach ($f in 'index.html','style.css','app.js','data.js','sound.js','manifest.json') { Copy-Item $f www }
 Copy-Item vendor www\vendor -Recurse   # Leaflet für die Kartenansicht
 "window.API_BASES = ['https://api.adsb.lol'];" | Set-Content www\config.js -Encoding utf8
 

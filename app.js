@@ -8,9 +8,18 @@ const GEOID_M = 48;                                  // Geoidhöhe (Ellipsoid �
 const EYE_M = 1.5;                                   // Augenhöhe über Boden
 const RANGES = [5, 10, 20, 40];                      // Radar-Reichweiten in km
 const FETCH_MS = 10000;
-const KEEP_MS = 35000;                               // Flugzeug nach so langer Funkstille entfernen
-const MAX_ALT_M = 5000;                              // darüber nur mit Schalter «Alle» im Radar
+const REQ_TIMEOUT_MS = 8000;                         // hängende Anfrage abbrechen, sonst steht die Abfrageschleife
+const GONE_MS = 25000;                               // fehlt ein Flugzeug so lange in erfolgreichen Abfragen, wird es entfernt
+const KEEP_MS = 120000;                              // ohne Verbindung: so lange mit den letzten Daten weiterrechnen
+const EXTRAP_S = 60;                                 // Position höchstens so weit hochrechnen
+const STALE_MS = 25000;                              // ab hier Warnung anzeigen
+const MAX_ALT_M = 5000;                              // Routen nur für Flugzeuge darunter abfragen
+const ZRH_ELEV_M = 432;
+const SOUND_MS = 343;                                // Schallgeschwindigkeit m/s
 const API_BASES = window.API_BASES || ['/adsb'];
+// Routen als statische Dateien (CORS erlaubt, eigener Server): belastet das Anfragelimit der Positions-API nicht
+const ROUTE_BASE = window.ROUTE_BASE || 'https://vrs-standing-data.adsb.lol/routes';
+const Sound = window.Sound;
 // Pistenanflüge (Landerichtung) von ZRH -> Konzept
 const RWY = [
   { name: '14', min: 120, max: 160, concept: 'nord' },
@@ -25,12 +34,12 @@ const state = {
   aircraft: new Map(),     // hex -> Datensatz
   routes: new Map(),       // callsign -> {codes:[], ap:{icao:{iata,city}}} | null
   routePending: new Set(),
-  rangeIdx: 2, showAll: false,
+  rangeIdx: 2, showAll: false, amb: 1,     // amb: Index in Sound.AMBIENT (Umgebungslärm)
   sel: 'auto',             // 'auto' | 'none' | hex
   lastFetch: 0, err: null,
 };
-try { const s = JSON.parse(localStorage.getItem('fl-settings') || '{}'); if (s.rangeIdx != null) state.rangeIdx = s.rangeIdx; state.showAll = !!s.showAll; } catch (e) {}
-const saveSettings = () => { try { localStorage.setItem('fl-settings', JSON.stringify({ rangeIdx: state.rangeIdx, showAll: state.showAll })); } catch (e) {} };
+try { const s = JSON.parse(localStorage.getItem('fl-settings') || '{}'); if (s.rangeIdx != null) state.rangeIdx = s.rangeIdx; state.showAll = !!s.showAll; if (Sound.AMBIENT[s.amb]) state.amb = s.amb; } catch (e) {}
+const saveSettings = () => { try { localStorage.setItem('fl-settings', JSON.stringify({ rangeIdx: state.rangeIdx, showAll: state.showAll, amb: state.amb })); } catch (e) {} };
 
 /* ================= Geometrie ================= */
 const rad = d => d * Math.PI / 180, deg = r => r * 180 / Math.PI;
@@ -45,18 +54,31 @@ function destPoint(lat, lon, trackDeg, meters) {
   const l2 = l1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
   return { lat: deg(p2), lon: deg(l2) };
 }
-const compass8 = b => ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'][Math.round(((b % 360) + 360) % 360 / 45) % 8];
+const COMPASS16 = ['Nord', 'Nordnordost', 'Nordost', 'Ostnordost', 'Ost', 'Ostsüdost', 'Südost', 'Südsüdost', 'Süd', 'Südsüdwest', 'Südwest', 'Westsüdwest', 'West', 'Westnordwest', 'Nordwest', 'Nordnordwest'];
+const compass16 = b => COMPASS16[Math.round(((b % 360) + 360) % 360 / 22.5) % 16];
 const angDiffIn = (a, min, max) => a >= min && a <= max;
 
 /* ================= Daten holen ================= */
+// fetch + JSON mit hartem Zeitlimit. Das Limit gilt auch, wenn die Umgebung (CapacitorHttp) das Abbruchsignal ignoriert.
+function fetchJSON(url, opts) {
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer;
+  const timeout = new Promise((_, rej) => {
+    timer = setTimeout(() => { if (ctl) ctl.abort(); rej(new Error('timeout')); }, REQ_TIMEOUT_MS);
+  });
+  const req = (async () => {
+    const r = await fetch(url, Object.assign({}, opts, ctl ? { signal: ctl.signal } : null));
+    if (!r.ok) { const e = new Error(String(r.status)); e.status = r.status; throw e; }
+    return await r.json();
+  })();
+  req.catch(() => {});                                 // falls das Zeitlimit zuerst kommt: keine «unhandled rejection»
+  return Promise.race([req, timeout]).finally(() => clearTimeout(timer));
+}
 async function getJSON(path, opts) {
   let last;
   for (const base of API_BASES) {
-    try {
-      const r = await fetch(base + path, opts);
-      if (!r.ok) throw new Error(r.status);
-      return await r.json();
-    } catch (e) { last = e; }
+    try { return await fetchJSON(base + path, opts); }
+    catch (e) { last = e; if (e.status === 429) break; }   // Anfragelimit: nicht gleich nochmals anklopfen
   }
   throw last;
 }
@@ -101,15 +123,15 @@ async function lookupRoutes() {
     if (alt * FT > MAX_ALT_M || Math.min(Math.hypot(zz.x, zz.y), Math.hypot(uu.x, uu.y)) > 45) continue; // nur Relevantes abfragen
     todo.push({ cs, d: Math.hypot(uu.x, uu.y) });
   }
-  todo.sort((a, b) => a.d - b.d); todo.length = Math.min(todo.length, 4);
+  todo.sort((a, b) => a.d - b.d); todo.length = Math.min(todo.length, 6);
   todo.forEach((t, i) => todo[i] = t.cs);
   await Promise.all(todo.map(async cs => {
     state.routePending.add(cs);
     try {
-      const res = await getJSON('/api/0/route/' + encodeURIComponent(cs));
+      const res = await fetchJSON(`${ROUTE_BASE}/${encodeURIComponent(cs.slice(0, 2))}/${encodeURIComponent(cs)}.json`);
       state.routes.set(cs, parseRoute(res)); routeStamp[cs] = Date.now();
     } catch (e) {
-      if (String(e.message) === '404') { state.routes.set(cs, null); routeStamp[cs] = Date.now(); }
+      if (e.status === 404) { state.routes.set(cs, null); routeStamp[cs] = Date.now(); }
       else routeFail.set(cs, Date.now());                         // später erneut versuchen
     }
     state.routePending.delete(cs);
@@ -118,15 +140,17 @@ async function lookupRoutes() {
 }
 
 // Genauer Typ & Betreiber aus der Registrierungsdatenbank (pro Flugzeug einmal, dann gecacht)
-const hexInfo = new Map(), hexPending = new Set();
+const hexInfo = new Map(), hexPending = new Set(), hexFail = new Map();
 try { for (const [h, v] of Object.entries(JSON.parse(localStorage.getItem('fl-hex') || '{}'))) hexInfo.set(h, v); } catch (e) {}
 async function lookupHex(hex) {
-  if (hexInfo.has(hex) || hexPending.has(hex)) return;
+  if (hexInfo.has(hex) || hexPending.has(hex) || Date.now() - (hexFail.get(hex) || 0) < 60000) return;
   hexPending.add(hex);
   try {
-    const r = await fetch('https://hexdb.io/api/v1/aircraft/' + hex);
-    if (r.status === 404) hexInfo.set(hex, null);
-    else if (r.ok) { const j = await r.json(); hexInfo.set(hex, { type: j.Type || '', icao: j.ICAOTypeCode || '', owner: j.RegisteredOwners || '' }); }
+    let j = null, known = true;
+    try { j = await fetchJSON('https://hexdb.io/api/v1/aircraft/' + hex); } catch (e) { known = e.status === 404; }
+    if (!known) { hexFail.set(hex, Date.now()); throw 0; }             // nicht jede Sekunde neu versuchen
+    if (!j) hexInfo.set(hex, null);
+    else { hexInfo.set(hex, { type: j.Type || '', icao: j.ICAOTypeCode || '', owner: j.RegisteredOwners || '' }); }
     if (hexInfo.has(hex)) {
       try { localStorage.setItem('fl-hex', JSON.stringify(Object.fromEntries(hexInfo))); } catch (e) {}
       tick();
@@ -150,24 +174,48 @@ function airportLabel(rt, icao) {
   const city = (a.city || '').replace(/ \(.*\)/, '');
   return city ? `${city}${a.iata ? ' (' + a.iata + ')' : ''}` : (a.iata || icao);
 }
+// Vermutlich hörbar? Schwelle knapp unter dem gewählten Umgebungspegel; 3 dB Hysterese gegen Flackern an der Grenze
+const heard = new Map();
+const ambientDb = () => Sound.AMBIENT[state.amb].db;
+function audible(hex, db) {
+  const thr = ambientDb() - Sound.DETECT_BELOW;
+  const a = db >= (heard.get(hex) ? thr - 3 : thr);
+  heard.set(hex, a);
+  return a;
+}
 // aktuelle (extrapolierte) Position und Kennzahlen eines Flugzeugs
 function derive(rec, now) {
   const p = rec.raw;
   if (p.alt_baro === 'ground') return null;
-  const dt = Math.max(0, Math.min((now - rec.t) / 1000, 45));
+  const dt = Math.max(0, Math.min((now - rec.t) / 1000, EXTRAP_S));
   const gs = (p.gs || 0) * KT, trk = p.track ?? 0;
-  const pos = gs > 5 ? destPoint(p.lat, p.lon, trk, gs * dt) : { lat: p.lat, lon: p.lon };
   const rate = p.baro_rate ?? p.geom_rate ?? 0;                       // ft/min
-  const altFt = (p.alt_baro ?? p.alt_geom ?? 0) + rate * dt / 60;      // Anzeige & Logik: barometrisch
+  // Lage zum Standort nach t Sekunden seit der letzten Positionsmeldung (t darf für die Schall-Rückrechnung kleiner sein als dt)
+  const at = t => {
+    const pos = gs > 5 ? destPoint(p.lat, p.lon, trk, gs * t) : { lat: p.lat, lon: p.lon };
+    const altFt = (p.alt_baro ?? p.alt_geom ?? 0) + rate * t / 60;     // Anzeige & Logik: barometrisch
+    // für die Distanz: Höhe über Meer (GPS-Höhe des Flugzeugs minus Geoidhöhe), sonst barometrisch
+    const altMsl = p.alt_geom != null ? (p.alt_geom + rate * t / 60) * FT - GEOID_M : altFt * FT;
+    const e = enu(pos.lat, pos.lon), horiz = Math.hypot(e.x, e.y) * 1000, dz = altMsl - state.user.alt;
+    return { pos, altFt, altMsl, e, horiz, dz, d3: Math.hypot(horiz, dz) };
+  };
+  const { pos, altFt, altMsl, e, horiz, dz, d3 } = at(dt);
   const altM = altFt * FT;
-  // für die Distanz: Höhe über Meer (GPS-Höhe des Flugzeugs minus Geoidhöhe), sonst barometrisch
-  const altMsl = p.alt_geom != null ? (p.alt_geom + rate * dt / 60) * FT - GEOID_M : altM;
-  const e = enu(pos.lat, pos.lon);
-  const horiz = Math.hypot(e.x, e.y) * 1000;
-  const dz = altMsl - state.user.alt;
+  // Schall: zu hören ist, was das Flugzeug vor der Laufzeit des Schalls abgestrahlt hat – also von weiter hinten auf seiner Bahn
+  let snd = at(dt - d3 / SOUND_MS);
+  snd = at(dt - snd.d3 / SOUND_MS);
+  const sndEl = deg(Math.atan2(snd.dz, Math.max(snd.horiz, 1)));
+  const toUser = deg(Math.atan2(-snd.e.x, -snd.e.y));                  // Richtung Flugzeug -> Standort
+  const cls = Sound.classify(p.t || hexInfo.get(p.hex)?.icao, p.category, p.gs || 0, altFt);
+  const db = Sound.estimate({
+    cls, rate, gs: p.gs || 0, hAgl: snd.altMsl - ZRH_ELEV_M, dist: snd.d3, horiz: snd.horiz, el: sndEl,
+    toward: Math.cos(rad(trk - toUser)) * Math.cos(rad(sndEl)),
+  });
   const cs = (p.flight || '').trim();
-  const rt = state.routes.get(cs) || null;
   const zE = enu(pos.lat, pos.lon, ZRH), dZrh = Math.hypot(zE.x, zE.y);
+  let rt = state.routes.get(cs) || null;
+  // Route ohne Zürich, aber tief direkt beim Flughafen: veralteter Routeneintrag (Flugnummer neu vergeben) -> ignorieren
+  if (rt && !rt.codes.includes('LSZH') && dZrh < 15 && altM < 2000) rt = null;
   let zrh = false, status = '?', from = null, to = null;
   if (rt) {
     const i = rt.codes.indexOf('LSZH');
@@ -185,8 +233,8 @@ function derive(rec, now) {
   }
   return {
     hex: p.hex, cs, reg: p.r || '', type: p.t || '', lat: pos.lat, lon: pos.lon, x: e.x, y: e.y,
-    altFt, altM, gs: p.gs || 0, trk, rate, horiz, dz,
-    d3: Math.hypot(horiz, dz), az: (deg(Math.atan2(e.x, e.y)) + 360) % 360,
+    altFt, altM, gs: p.gs || 0, trk, rate, horiz, dz, cls, db, aud: audible(p.hex, db), delay: snd.d3 / SOUND_MS,
+    d3, az: (deg(Math.atan2(e.x, e.y)) + 360) % 360,
     el: deg(Math.atan2(dz, Math.max(horiz, 1))), zrh, status, from, to, rt, dZrh,
   };
 }
@@ -245,13 +293,14 @@ function buildRow(hex) {
   const el = document.createElement('article');
   el.className = 'ac';
   el.innerHTML = `<div class="row"><div class="rank"></div><div class="main"><div class="l1"></div><div class="l2"></div></div>
-    <div class="dist"><span></span></div></div>
+    <div class="dist"><span></span><small></small></div></div>
     <div class="detail"><div><div class="grid">
+      <div class="wide"><b>Airline</b><span class="route" data-f="air"></span></div>
       <div class="wide"><b>Route</b><span class="route" data-f="route"></span></div>
       <div><b>Flug</b><span data-f="cs"></span></div><div><b>Registrierung</b><span data-f="reg"></span></div>
       <div><b>Höhe</b><span data-f="alt"></span></div><div><b>Geschwindigkeit</b><span data-f="gs"></span></div>
-      <div><b>Steigen / Sinken</b><span data-f="rate"></span></div><div><b>Richtung vom Standort</b><span data-f="dir"></span></div>
-      <div><b>Horizontal</b><span data-f="horiz"></span></div><div><b>Kurs</b><span data-f="trk"></span></div>
+      <div><b>Steigen / Sinken</b><span data-f="rate"></span></div><div><b>Kurs</b><span data-f="trk"></span></div>
+      <div><b>Lautstärke (geschätzt)</b><span data-f="db"></span></div><div><b>Schall unterwegs</b><span data-f="delay"></span></div>
     </div></div></div>`;
   el.querySelector('.row').addEventListener('click', () => select(hex, true));
   return el;
@@ -274,26 +323,28 @@ function renderList(list) {
     let el = rows.get(d.hex);
     if (!el) { el = buildRow(d.hex); rows.set(d.hex, el); }
     if (box.children[i] !== el) box.insertBefore(el, box.children[i] || null);
-    el.className = 'ac ' + d.status + (d.hex === selHex ? ' open sel' : '');
+    el.className = 'ac' + (d.status === '?' ? '' : ' ' + d.status) + (d.hex === selHex ? ' open sel' : '');
     el.querySelector('.rank').textContent = i + 1;
     lookupHex(d.hex);
     const air = airlineOf(d.cs, d.hex);
-    el.querySelector('.l1').textContent = typeOf(d.type, d.hex) + (air ? ' · ' + air : '');
+    el.querySelector('.l1').textContent = typeOf(d.type, d.hex);
     const where = d.status === 'arr' ? (d.from ? 'Von ' + airportLabel(d.rt, d.from) : 'Landeanflug auf Zürich')
       : d.status === 'dep' ? (d.to ? 'Nach ' + airportLabel(d.rt, d.to) : 'Abflug ab Zürich') : '';
     el.querySelector('.l2').textContent = where || (d.cs || d.reg);
     el.querySelector('.dist span').textContent = fmtKm(d.d3);
+    el.querySelector('.dist small').textContent = Sound.describe(d.db, ambientDb());
     const set = (f, v) => { el.querySelector(`[data-f="${f}"]`).textContent = v; };
-    set('route', d.rt ? `${airportLabel(d.rt, d.rt.codes[0])} → ${airportLabel(d.rt, d.rt.codes[d.rt.codes.length - 1])}` : 'unbekannt (nach Verhalten erkannt)');
+    set('route', d.rt ? `${airportLabel(d.rt, d.rt.codes[0])} → ${airportLabel(d.rt, d.rt.codes[d.rt.codes.length - 1])}` : d.zrh ? 'unbekannt (nach Verhalten erkannt)' : 'unbekannt');
     set('cs', d.cs || '–'); set('reg', d.reg || '–');
     set('alt', `${Math.round(d.altM / 10) * 10} m ü. M.`);
     set('gs', `${Math.round(d.gs * 1.852)} km/h`);
     set('rate', `${d.rate > 0 ? '▲' : d.rate < 0 ? '▼' : '►'} ${Math.abs(d.rate * FT / 60).toFixed(1)} m/s`);
-    set('dir', `${compass8(d.az)} ${Math.round(d.az)}°, ${Math.round(d.el)}° hoch`);
-    set('horiz', fmtKm(d.horiz)); set('trk', `${Math.round(d.trk)}°`);
+    set('trk', compass16(d.trk));
+    set('air', air); el.querySelector('[data-f="air"]').parentElement.hidden = !air;
+    set('db', `≈ ${Math.round(d.db)} dB(A)`); set('delay', `${Math.round(d.delay)} s`);
   });
   $('empty').hidden = list.length > 0;
-  $('count').textContent = list.length ? `· ${list.length} in Reichweite` : '';
+  $('count').textContent = list.length ? `· ${list.length} vermutlich hörbar` : '';
 }
 
 /* ================= Radar ================= */
@@ -353,11 +404,11 @@ function drawRadar() {
   for (const rec of state.aircraft.values()) { const d = derive(rec, now); if (d) all.push(d); }
   all.sort((a, b) => (a.hex === selHex) - (b.hex === selHex));
   for (const d of all) {
-    if (!state.showAll && (!d.zrh || d.altM > MAX_ALT_M)) continue;
+    if (!state.showAll && !d.aud) continue;
     if (Math.hypot(d.x, d.y) > range * 1.02) continue;
     const [x, y] = P(d.x, d.y);
     radarItems.push({ x, y, hex: d.hex });
-    drawPlane(c, x, y, rad(d.trk) - rot, d, d.hex === selHex, d.zrh);
+    drawPlane(c, x, y, rad(d.trk) - rot, d, d.hex === selHex, d.aud);
   }
 
   // Standort (Mitte)
@@ -366,7 +417,7 @@ function drawRadar() {
   c.beginPath(); c.arc(cx, cx, 7, 0, 7); c.fillStyle = g; c.shadowColor = '#7dff6a'; c.shadowBlur = 12; c.fill();
   c.shadowBlur = 0; c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke();
 }
-function drawPlane(c, x, y, a, d, selected, zrh) {
+function drawPlane(c, x, y, a, d, selected, loud) {       // loud = vermutlich hörbar; sonst ausgegraut
   const s = selected ? 1.35 : 1;
   c.save(); c.translate(x, y); c.rotate(a);
   if (selected) {
@@ -380,12 +431,13 @@ function drawPlane(c, x, y, a, d, selected, zrh) {
   c.lineTo(1.8, 8); c.lineTo(5, 10); c.lineTo(5, 11.5); c.lineTo(0, 10.3);
   c.lineTo(-5, 11.5); c.lineTo(-5, 10); c.lineTo(-1.8, 8); c.lineTo(-2.2, 2.5);
   c.lineTo(-10, 5); c.lineTo(-10, 3); c.lineTo(-2.2, -3); c.closePath();
-  const col = !zrh ? ['#d6e6f0', '#8fa9ba'] : d.status === 'arr' ? ['#ffe3a8', '#ff9a1f'] : d.status === 'dep' ? ['#d5ffb8', '#4cbf2b'] : ['#ffffff', '#6cc4ee'];
+  const col = !loud ? ['#d6e6f0', '#8fa9ba'] : d.status === 'arr' ? ['#ffe3a8', '#ff9a1f'] : d.status === 'dep' ? ['#d5ffb8', '#4cbf2b'] : ['#ffffff', '#6cc4ee'];
   const gr = c.createLinearGradient(-10, -10, 10, 10); gr.addColorStop(0, col[0]); gr.addColorStop(1, col[1]);
+  if (!loud) c.globalAlpha = 0.6;
   c.fillStyle = gr; c.shadowColor = 'rgba(0,30,70,.6)'; c.shadowBlur = 5; c.shadowOffsetY = 2; c.fill();
   c.shadowBlur = 0; c.shadowOffsetY = 0; c.strokeStyle = 'rgba(255,255,255,.95)'; c.lineWidth = 1.1; c.stroke();
   c.restore();
-  if (zrh || selected) {
+  if (loud || selected) {
     c.font = '700 11px Segoe UI, sans-serif'; c.textAlign = 'left'; c.fillStyle = '#fff';
     c.shadowColor = 'rgba(0,40,90,.9)'; c.shadowBlur = 4;
     c.fillText(d.cs || d.reg || d.hex, x + 14, y - 4);
@@ -412,6 +464,9 @@ $('zoomIn').onclick = () => setRange(state.rangeIdx - 1);
 $('zoomOut').onclick = () => setRange(state.rangeIdx + 1);
 $('btnAll').onclick = e => { state.showAll = !state.showAll; e.currentTarget.classList.toggle('on', state.showAll); saveSettings(); drawRadar(); updateMap(); };
 $('btnAll').classList.toggle('on', state.showAll);
+function showAmbient() { $('btnAmb').textContent = 'Umgebung: ' + Sound.AMBIENT[state.amb].key; }
+$('btnAmb').onclick = () => { state.amb = (state.amb + 1) % Sound.AMBIENT.length; showAmbient(); saveSettings(); tick(); };
+showAmbient();
 
 /* ---- Ansicht: Kompass-Radar oder Karte ---- */
 state.view = 'radar';
@@ -457,10 +512,10 @@ function updateMap() {
   const seen = new Set();
   for (const rec of state.aircraft.values()) {
     const d = derive(rec, now);
-    if (!d || (!state.showAll && (!d.zrh || d.altM > MAX_ALT_M))) continue;
+    if (!d || (!state.showAll && !d.aud)) continue;
     seen.add(d.hex);
-    const sel = d.hex === selHex, cls = 'pm ' + (!d.zrh ? 'oth' : d.status) + (sel ? ' sel' : '');
-    const label = d.zrh || sel ? `<b>${d.cs || d.reg || d.hex}</b><i>${Math.round(d.altM / 50) * 50} m</i>` : '';
+    const sel = d.hex === selHex, cls = 'pm ' + (!d.aud ? 'oth' : d.status === '?' ? 'gen' : d.status) + (sel ? ' sel' : '');
+    const label = d.aud || sel ? `<b>${d.cs || d.reg || d.hex}</b><i>${Math.round(d.altM / 50) * 50} m</i>` : '';
     const key = cls + '|' + Math.round(d.trk / 3) + '|' + label;
     let m = mapMarkers.get(d.hex);
     if (!m) {
@@ -527,22 +582,24 @@ function startGeo() {
 function tick() {
   const now = Date.now();
   updateGroundHeight(); updatePlace();
-  const list = [];
+  const zrhList = [], loud = [];
   for (const [hex, rec] of state.aircraft) {
-    if (now - rec.seen > KEEP_MS) { state.aircraft.delete(hex); continue; }
+    // weg, wenn es in den letzten erfolgreichen Abfragen fehlte – nicht schon, wenn bloss die Verbindung kurz hakt
+    if (state.lastFetch - rec.seen > GONE_MS || now - rec.seen > KEEP_MS) { state.aircraft.delete(hex); heard.delete(hex); continue; }
     const d = derive(rec, now);
-    if (d && d.zrh) list.push(d);
+    if (!d) continue;
+    if (d.zrh) zrhList.push(d);
+    if (d.aud) loud.push(d);
   }
-  list.sort((a, b) => a.d3 - b.d3);
-  const shown = list.filter(d => d.altM <= MAX_ALT_M).slice(0, 8);
-  updateConcept(list, now);
-  renderList(shown);
+  loud.sort((a, b) => b.db - a.db);                    // das lauteste zuerst
+  updateConcept(zrhList, now);
+  renderList(loud.slice(0, 8));
   drawRadar();
   const u = state.user;
   if (state.view === 'map' && map && u.real && !state.mapFitted) { state.mapFitted = true; fitMap(); }
   updateMap();
   let s;
-  if (state.err && now - state.lastFetch > 30000) s = '⚠ Verbindung: ' + state.err;
+  if (state.err && now - state.lastFetch > STALE_MS) s = '⚠ ' + state.err + (state.lastFetch ? ` · letzte Daten vor ${Math.round((now - state.lastFetch) / 1000)} s` : '');
   else if (state.gpsErr && !u.real) s = state.gpsErr;
   else {
     const age = state.lastFetch ? Math.round((now - state.lastFetch) / 1000) : null;
@@ -550,16 +607,26 @@ function tick() {
   }
   $('status').textContent = s;
 }
+let fails = 0, loopTimer = null, fetching = false;
 async function loop() {
+  clearTimeout(loopTimer);
+  if (fetching) return;
+  if (document.hidden) { loopTimer = setTimeout(loop, FETCH_MS); return; }   // im Hintergrund nicht abfragen
+  fetching = true;
   let wait = FETCH_MS;
   try { await fetchTraffic(); fails = 0; }
-  catch (e) {                                         // z.B. 429/5xx: länger warten, Daten bleiben bis KEEP_MS stehen
-    state.err = 'Flugdaten nicht erreichbar';
-    wait = Math.min(60000, FETCH_MS * 2 ** Math.min(++fails, 3));
+  catch (e) {
+    // Einzelne Aussetzer (429, 5xx, Zeitlimit) sind bei adsb.lol normal: rasch nochmals versuchen, erst bei Serien länger warten.
+    // Die Flugzeuge werden währenddessen mit den letzten Daten weitergerechnet.
+    state.err = e.status === 429 ? 'Flugdaten: zu viele Anfragen' : 'Flugdaten nicht erreichbar';
+    wait = [2500, 5000, 10000, 20000, 30000][Math.min(fails++, 4)];
   }
-  setTimeout(loop, wait);
+  fetching = false;
+  loopTimer = setTimeout(loop, wait);
 }
-let fails = 0;
+// zurück im Vordergrund oder wieder online: sofort frische Daten holen statt auf den nächsten Takt zu warten
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - state.lastFetch > FETCH_MS / 2) loop(); });
+window.addEventListener('online', () => loop());
 
 window.addEventListener('resize', sizeCanvas);
 new ResizeObserver(sizeCanvas).observe($('radar').parentElement);

@@ -27,7 +27,7 @@ jobs:
       - name: Web-Dateien nach www kopieren
         run: |
           rm -rf www && mkdir www
-          cp index.html style.css app.js data.js manifest.json www/
+          cp index.html style.css app.js data.js sound.js manifest.json www/
           cp -r vendor www/vendor
           # In der App spricht config.js direkt mit der API (CapacitorHttp umgeht CORS)
           echo "window.API_BASES = ['https://api.adsb.lol'];" > www/config.js

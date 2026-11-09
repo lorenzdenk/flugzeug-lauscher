@@ -58,22 +58,24 @@
       <button class="gel" id="zoomIn" aria-label="Näher ran">+</button>
     </div>
     <div class="controls">
-      <button class="gel toggle" id="btnAll">Alle</button>
+      <button class="gel toggle" id="btnAll" title="Auch Flugzeuge zeigen, die vermutlich nicht zu hören sind (grau)">Alle</button>
+      <button class="gel toggle" id="btnAmb" title="Wie laut ist es bei dir? Davon hängt ab, was noch zu hören ist.">Umgebung: normal</button>
     </div>
   </section>
 
   <section class="glass listbox">
     <h2>Über dir <small id="count"></small></h2>
     <div id="list"></div>
-    <p id="empty" class="empty" hidden>Gerade kein Zürich-Flug in Reichweite.</p>
+    <p id="empty" class="empty" hidden>Gerade ist vermutlich kein Flugzeug zu hören.</p>
   </section>
 
-  <footer>Daten: adsb.lol · Entfernung = Luftlinie inkl. Höhe · Gelände: Open-Meteo</footer>
+  <footer>Daten: adsb.lol · Entfernung = Luftlinie inkl. Höhe · Gelände: Open-Meteo<br>Hörbarkeit: Schätzung aus Typ, Flugphase und Distanz – ohne Mikrofon</footer>
 </main>
 
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="config.js"></script>
 <script src="data.js"></script>
+<script src="sound.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
